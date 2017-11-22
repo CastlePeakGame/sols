@@ -7,6 +7,7 @@ contract TokenERC20 {
     string public name;
     string public symbol;
     uint8 public decimals = 18;
+    // 等同于Wei的概念
     // 18 decimals is the strongly suggested default, avoid changing it
     uint256 public totalSupply;
 
@@ -119,11 +120,11 @@ contract TokenERC20 {
     }
 
     /**
-     * Destroy tokens
+     * Destroy tokensx
      *
-     * Remove `_value` tokens from the system irreversibly
+     * Remove `_value` tokens from the system irreversiblyx
      *
-     * @param _value the amount of money to burn
+     * @param _value the amount of money to burnp
      */
     function burn(uint256 _value) public returns (bool success) {
         require(balanceOf[msg.sender] >= _value);   // Check if the sender has enough

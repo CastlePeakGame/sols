@@ -5,14 +5,14 @@ interface token {
     function transfer(address receiver, uint amount);
 }
 
-contract Crowdsale {
-    address public beneficiary;
-    uint public fundingGoal;
-    uint public amountRaised;
-    uint public deadline;
-    uint public price;
+contract CPGCrowdsale {
+    address public beneficiary; // 发起众筹的人
+    uint public fundingGoal; // 预期筹多少Wei
+    uint public amountRaised; // 目前筹到多少Wei
+    uint public deadline; // 截止日期
+    uint public price; // 1个cpg代币的价格
     token public tokenReward;
-    mapping(address => uint256) public balanceOf;
+    mapping(address => uint256) public balanceOf; //每个投资人投了多少Wei
     bool fundingGoalReached = false;
     bool crowdsaleClosed = false;
 
@@ -24,17 +24,17 @@ contract Crowdsale {
      *
      * Setup the owner
      */
-    function Crowdsale(
+    function CPGCrowdsale(
         address ifSuccessfulSendTo,
         uint fundingGoalInEthers,
         uint durationInMinutes,
-        uint etherCostOfEachToken,
+        uint oneEtherToToken,
         address addressOfTokenUsedAsReward
     ) {
         beneficiary = ifSuccessfulSendTo;
-        fundingGoal = fundingGoalInEthers * 1 ether;
+        fundingGoal = fundingGoalInEthers * 1 ether; // 乘以10**18,转化成Wei
         deadline = now + durationInMinutes * 1 minutes;
-        price = etherCostOfEachToken * 1 ether;
+        price = 1 ether / oneEtherToToken; // 代币的价格（单位是Wei），小心不能成为小数
         tokenReward = token(addressOfTokenUsedAsReward);
     }
 
@@ -45,10 +45,11 @@ contract Crowdsale {
      */
     function () payable {
         require(!crowdsaleClosed);
-        uint amount = msg.value;
+        uint amount = msg.value; //这里进来的是Wei
         balanceOf[msg.sender] += amount;
         amountRaised += amount;
-        tokenReward.transfer(msg.sender, amount / price);
+        uint256 tokenValue = (amount / price) * 1 ether;
+        tokenReward.transfer(msg.sender, tokenValue);
         FundTransfer(msg.sender, amount, true);
     }
 
