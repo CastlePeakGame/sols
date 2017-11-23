@@ -1,6 +1,6 @@
 pragma solidity ^0.4.18;
           
-/**xxp
+/**xxp 校验防止溢出情况
  * @title SafeMath
  * @dev Math operations with safety checks that throw on error
  */
@@ -98,6 +98,7 @@ contract StandardToken is ERC20Basic {
   using SafeMath for uint256;
 
   mapping (address => mapping (address => uint256)) internal allowed;
+  // store tokens
   mapping(address => uint256) balances;
   // uint256 public totalSupply;
 
