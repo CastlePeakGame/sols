@@ -1,7 +1,7 @@
 pragma solidity ^0.4.18;
 
-/**
- * @title SafeMath-xxp
+/**xxp 校验防止溢出情况
+ * @title SafeMath
  * @dev Math operations with safety checks that throw on error
  */
 library SafeMath {
@@ -98,6 +98,7 @@ contract StandardToken is ERC20Basic {
   using SafeMath for uint256;
 
   mapping (address => mapping (address => uint256)) internal allowed;
+  // store tokens
   mapping(address => uint256) balances;
   // uint256 public totalSupply;
 
@@ -170,7 +171,6 @@ contract StandardToken is ERC20Basic {
   function allowance(address _owner, address _spender) public constant returns (uint256 remaining) {
     return allowed[_owner][_spender];
   }
-
 }
 
 /**
@@ -205,7 +205,7 @@ contract BurnableToken is StandardToken {
  * Based on code by TokenMarketNet: https://github.com/TokenMarketNet/ico/blob/master/contracts/MintableToken.sol
  */
 
-contract MintableToken is BurnableToken, Ownable {
+contract MintableToken is StandardToken, Ownable {
   event Mint(address indexed to, uint256 amount);
   event MintFinished();
 
@@ -242,125 +242,188 @@ contract MintableToken is BurnableToken, Ownable {
   }
 }
 
+/**
+ * @title Pausable
+ * @dev Base contract which allows children to implement an emergency stop mechanism.
+ */
+contract Pausable is Ownable {
+  event Pause();
+  event Unpause();
+
+  bool public paused = false;
+
+
+  /**
+   * @dev Modifier to make a function callable only when the contract is not paused.
+   */
+  modifier whenNotPaused() {
+    require(!paused);
+    _;
+  }
+
+  /**
+   * @dev Modifier to make a function callable only when the contract is paused.
+   */
+  modifier whenPaused() {
+    require(paused);
+    _;
+  }
+
+  /**
+   * @dev called by the owner to pause, triggers stopped state
+   */
+  function pause() onlyOwner whenNotPaused public {
+    paused = true;
+    Pause();
+  }
+
+  /**
+   * @dev called by the owner to unpause, returns to normal state
+   */
+  function unpause() onlyOwner whenPaused public {
+    paused = false;
+    Unpause();
+  }
+}
+
+/**
+ * @title Pausable token
+ *
+ * @dev StandardToken modified with pausable transfers.
+ **/
+
+contract PausableToken is StandardToken, Pausable {
+
+  function transfer(address _to, uint256 _value) public whenNotPaused returns (bool) {
+    return super.transfer(_to, _value);
+  }
+
+  function transferFrom(address _from, address _to, uint256 _value) public whenNotPaused returns (bool) {
+    return super.transferFrom(_from, _to, _value);
+  }
+
+  function approve(address _spender, uint256 _value) public whenNotPaused returns (bool) {
+    return super.approve(_spender, _value);
+  }
+}
+
 /*
  * @title CPGToken
  */
-contract CPGToken is MintableToken {
-    // Public variables of the token
-    string public name;
-    string public symbol;
-    uint8 public decimals = 18;
-    // 等同于Wei的概念
-    // 18 decimals is the strongly suggested default, avoid changing it
-    // uint256 public totalSupply;
+contract CPGToken is BurnableToken, MintableToken, PausableToken {
+  // Public variables of the token
+  string public name;
+  string public symbol;
+  // 等同于Wei的概念,  decimals is the strongly suggested default, avoid changing it
+  uint8 public decimals;
 
-  function CPGToken( uint256 _initialSupply, string _tokenName, string _tokenSymbol) public {
-      name = _tokenName;
-      symbol = _tokenSymbol;
-      totalSupply = _initialSupply * 10 ** uint256(decimals);
+  // function CPGToken( uint256 _initialSupply, string _tokenName, string _tokenSymbol, uint8 _decimals) public {
+  function CPGToken() public {
+    name = "CPG Game";
+    symbol = "CPG";
+    decimals = 18;
+    totalSupply = 98000000 * 10 ** uint256(decimals);
 
-      // Allocate initial balance to the owner
-      balances[msg.sender] = totalSupply;
-    }
-
+    // Allocate initial balance to the owner
+    balances[msg.sender] = totalSupply;
+  }
 }
 
-contract CPGTokenCrowdSale is Ownable {
+contract CPGCrowdSale is Ownable {
   using SafeMath for uint256;
 
-  struct TimeBonus {
-    uint256 bonusPeriodEndTime;
-    uint bonusPercent;
-    uint tokenPercent;
-    bool applyKYC;
+  struct MileStone {
+    string name;
+    uint diffStartTime;
+    // uint256 amountTokens;
+    uint amountEtherRaised;
+    uint minCNY;
+    uint saleMinNumEther;
+    uint maxCNY;
+    uint saleMaxNumEther;
+    uint capCNY;
+    uint hardEtherCap;
   }
 
-  /* The token object */
-  CPGToken public token;
-
   /* Start and end timestamps where investments are allowed (both inclusive) */
-  uint256 public mainSaleStartTime;
-  uint256 public mainSaleEndTime;
+  uint public mainSaleStartTime;
+  uint public mainSaleEndTime;
 
   /* Address where funds are transferref after collection */
-  address public projectWallet;
+  address public fundsWallet;
 
-  /* Address where final 30% of funds will be collected */
-  address public reserveWallet;
+  MileStone[] public mileStones;
+  uint8 public currentState = 0;
 
-  /* How many token units a buyer gets per ether */
-  uint256 public rate = 1000;
+  //每个投资人投了多少以太币
+  mapping(address => uint256) public investedEtherAmount;
 
-  /* Amount of selled cpg */
-  uint256 public cpgSelled;
-  uint256 public amountRaised;
-
-  /* Amount of total selling cpg*/
-  uint256 public sellSupply;
-
-  /* Minimum amount of Wei allowed per transaction = 0.1 Ethers */
-  uint256 public saleMinimumWei = 100000000000000000; 
-
-  TimeBonus[] public timeBonuses;
-
-  bool isKYC = true;
-  mapping(address => bool) KYCaddrs;
-
-  uint256 public softWeiCap;
-  uint256 public hardWeiCap;
-
-  bool fundingGoalReached = false;
-  bool crowdsaleClosed = false;
-  mapping(address => uint256) public balanceOf; //每个投资人投了多少Wei
+  // bool public isDistributed = false;
+  uint ethPrice = 3000;
 
   /**
-   * event for token purchase logging
-   * event for finalizing the crowdsale
+   * event for token logging
    */
-  event TokenPurchase(address indexed purchaser, address indexed beneficiary, uint256 value, uint256 amount);
-  event GoalReached(address recipient, uint totalAmountRaised);
-  event FundTransfer(address backer, uint amount, bool isContribution);
-  // event FinalisedCrowdsale(uint256 totalSupply, uint256 reserveTokens);
+  event TokenPurchase(uint timeStamp, address indexed purchaser, address indexed beneficiary, uint256 value);
+  event FundTransfer(address backer, uint256 amount, bool isContribution);
+  event ChangeEtherPrice(uint oldPrice, uint ethPrice);
+  event ChangeSaleDates(uint mainSaleStartTime, uint mainSaleEndTime);
+  // event TokenDistribute(address teamPartner, uint256 amountCPG);
 
-  function CPGTokenCrowdSale(uint256 _mainSaleStartTime, address _projectWallet, address _reserveWallet, address addressOfTokenUsedAsReward, uint256 _softEthCap, uint256 _hardEthCap) public {
-
+  function CPGCrowdSale(uint _mainSaleStartTime, address _fundsWallet) public {
     /* Can't start main sale in the past */
     require(_mainSaleStartTime >= now);
 
-    /* Confirming projectWaddresses as valid */
-    require(_projectWallet != 0x0);
-    require(_reserveWallet != 0x0);
+    /* Confirming addresses as valid */
+    require(_fundsWallet != 0x0);
 
-    /* The Crowdsale bonus pattern
-     * 1 day = 86400 = 60 * 60 * 24 (Seconds * Minutes * Hours)
-     * 1 day * Number of days to close at, Bonus Percentage, selling tokens percentage, enabled kyc
+    /* The Crowdsale pattern
+     * 1 days = 86400 = 60 * 60 * 24 (Seconds * Minutes * Hours)
+     * name, 距启动时间差（秒), 已收以太币, 单笔下限(cny, ether), 单笔上限(cny, ether)， 每阶段硬顶
+     * privateICO has no time limit， set the max timestamp.
      */
-  
-    timeBonuses.push(TimeBonus(86400*3,   30,   30,   true)); // 0 - 3 Days, 30 %, 30% selling tokens
-    timeBonuses.push(TimeBonus(86400*7,   20,   50,   true)); // 3 -7 Days, 20 %, 30%+20% selling tokens
-    timeBonuses.push(TimeBonus(86400*14,  15,   60,   false)); // 7-14 Days, 15 %, 50%+10% selling tokens
-    timeBonuses.push(TimeBonus(86400*21,  10,   70,   false)); // 14-21 Days, 10  %, 60%+10% selling tokens
-    timeBonuses.push(TimeBonus(86400*28,  5,    80,   false)); // 21-28 Days, 5  %, 70%+10% selling tokens
-    timeBonuses.push(TimeBonus(86400*35,  0,    100,  false)); // 28-35 Days, 0  %, 80%+20% selling tokens
+    mileStones.push(MileStone("private", 1 hours,    0,  3000000,   3000000/ethPrice, 9000000,  9000000/ethPrice,   9000000,  9000000/ethPrice));
+    mileStones.push(MileStone("pre",     30 minutes, 0,  500000,    500000/ethPrice,  3000000,  3000000/ethPrice,   40000000, 40000000/ethPrice));
+    mileStones.push(MileStone("public",  1 hours,    0,  ethPrice,  1,                72000000, 72000000/ethPrice,  72000000, 72000000/ethPrice));
 
     mainSaleStartTime = _mainSaleStartTime;
-    mainSaleEndTime = mainSaleStartTime + 35 days;
-    projectWallet = _projectWallet;
-    reserveWallet = _reserveWallet;
-    softWeiCap = _softEthCap * 1 ether;
-    hardWeiCap = _hardEthCap * 1 ether;
+    mainSaleEndTime = mainSaleStartTime + mileStones[mileStones.length-1].diffStartTime;
 
-    token = CPGToken(addressOfTokenUsedAsReward);
-    uint256 total = token.totalSupply();
-    uint256 reserveTokens = total.mul(30).div(100);
-    token.transfer(reserveWallet, reserveTokens);
-    sellSupply = total.mul(70).div(100);
+    fundsWallet = _fundsWallet;
 
   }
 
-  // /* Creates the token to be sold */
-  // function createTokenContract() internal returns (MintableToken) {
-  //   return new CPGToken();
+  // 设置Ehter价格，防止异常波动事件
+  function setCNYPerEther(uint _price) onlyOwner public {
+    require(_price != 0);
+    uint oldPrice = ethPrice;
+    ethPrice = _price;
+    for (uint i = 0; i < mileStones.length; i++) {
+      // 四舍五入，会向下取整，以太升值的话，publicICO的单笔下限会变0
+      if (i != 2) {
+        mileStones[i].saleMinNumEther = mileStones[i].minCNY.div(ethPrice);
+      }
+      mileStones[i].saleMaxNumEther = mileStones[i].maxCNY.div(ethPrice);
+      mileStones[i].hardEtherCap = mileStones[i].capCNY.div(ethPrice);
+    }
+    ChangeEtherPrice(oldPrice, ethPrice);
+  }
+
+  // // need 4800W cpg.
+  // function distributeTokens() onlyOwner public {
+  //   require(!isDistributed);
+
+  //   uint256 tokenUints = 10 ** uint256(token.decimals());
+  //   require(token.balanceOf(address(this)) == 48000000*tokenUints);
+
+  //   assert(token.transfer(privateWallet, 18000000*tokenUints));
+  //   TokenDistribute(privateWallet, 18000000);
+  //   assert(token.transfer(timeWallet, 19600000*tokenUints));
+  //   TokenDistribute(timeWallet, 19600000);
+  //   assert(token.transfer(marketWallet, 14700000*tokenUints));
+  //   TokenDistribute(marketWallet, 14700000);
+
+  //   isDistributed = true;
   // }
 
   /* Fallback function can be used to buy tokens */
@@ -370,44 +433,41 @@ contract CPGTokenCrowdSale is Ownable {
 
   /* Low level token purchase function */
   function buyTokens(address beneficiary) public payable {
-    require(!crowdsaleClosed);
     require(beneficiary != 0x0);
     require(msg.value != 0);
     require(now <= mainSaleEndTime && now >= mainSaleStartTime);
-    require(msg.value >= saleMinimumWei);
-    require(amountRaised <= hardWeiCap);
+    applyCurrentState();
+    uint256 etherValue = msg.value / 1 ether;
+    require(etherValue >= mileStones[currentState].saleMinNumEther && etherValue <= mileStones[currentState].saleMaxNumEther);
+    require(mileStones[currentState].amountEtherRaised < mileStones[currentState].hardEtherCap);
 
-    /* Add bonus to tokens depends on the period */
-    uint256 bonusedTokens = applyBonus(msg.value);
-    if (isKYC) {
-        require(validKYCAddr(beneficiary));
+    mileStones[currentState].amountEtherRaised = mileStones[currentState].amountEtherRaised.add(etherValue);
+    investedEtherAmount[msg.sender] = investedEtherAmount[msg.sender].add(etherValue);
+
+    TokenPurchase(now, msg.sender, beneficiary, etherValue);
+
+  }
+
+  /* apply currentState, 0 means privateICO, 1 means preICO, 2 means publicICO */
+  function applyCurrentState() internal {
+    // state == 2, needless apply
+    if (currentState == 2) {
+      return;
     }
-    /* Update state on the blockchain */
-    cpgSelled = cpgSelled.add(bonusedTokens);
-    amountRaised = amountRaised.add(msg.value);
-    balanceOf[msg.sender].add(msg.value);
 
-    token.transfer(beneficiary, bonusedTokens);
-    TokenPurchase(msg.sender, beneficiary, msg.value, bonusedTokens);
+    uint256 diffCapEther;
+    uint diffInSeconds = now - mainSaleStartTime;
 
-  }
-
-  function setKYCstatus(bool status) internal {
-    if (isKYC != status) {
-      isKYC = status;
+    if (mileStones[currentState].amountEtherRaised <= mileStones[currentState].hardEtherCap) {
+      diffCapEther = mileStones[currentState].hardEtherCap.sub(mileStones[currentState].amountEtherRaised);
+    } else {
+      // 0 means WeiRaised reached hardEtherCap.
+      diffCapEther = 0;
     }
-  }
 
-  function addKYCAddr(address addr) external onlyOwner returns(bool) {
-    KYCaddrs[addr] = true;
-  }
-
-  function removeKYCAddr(address addr) external onlyOwner returns(bool) {
-    KYCaddrs[addr] = false;
-  }
-
-  function validKYCAddr(address addr) internal view returns(bool) {
-    return KYCaddrs[addr];
+    if (diffInSeconds > mileStones[currentState].diffStartTime || diffCapEther < mileStones[currentState].saleMinNumEther) {
+      currentState += 1;
+    }
   }
 
   modifier afterDeadline() {
@@ -415,97 +475,139 @@ contract CPGTokenCrowdSale is Ownable {
     _;
   }
 
-  /**
-    * Check if goal was reached
-    *
-    * Checks if the goal or time limit has been reached and ends the campaign
-    */
-  function checkGoalReached() afterDeadline public {
-      if (amountRaised >= softWeiCap) {
-          fundingGoalReached = true;
-          GoalReached(projectWallet, amountRaised);
-      }
-      crowdsaleClosed = true;
-  }
-
     /**
     * Withdraw the funds
-    *
-    * Checks to see if goal or time limit has been reached, and if so, and the funding goal was reached,
-    * sends the entire amount to the projectWallet. If goal was not reached, each contributor can withdraw
-    * the amount they contributed.
+    * Checks to see if time limit has been reached, sends the entire amount to the fundsWallet.
     */
   function safeWithdrawal() afterDeadline public {
-      if (!fundingGoalReached) {
-          uint256 amount = balanceOf[msg.sender];
-          balanceOf[msg.sender] = 0;
-          if (amount > 0) {
-              if (msg.sender.send(amount)) {
-                  FundTransfer(msg.sender, amount, false);
-              } else {
-                  balanceOf[msg.sender] = amount;
-              }
-          }
+      // if (!fundingGoalReached) {
+      //     uint256 amount = investedEtherAmount[msg.sender];
+      //     investedWeiAmount[msg.sender] = 0;
+      //     if (amount > 0) {
+      //         if (msg.sender.send(amount)) {
+      //             FundTransfer(msg.sender, amount, false);
+      //         } else {
+      //             investedWeiAmount[msg.sender] = amount;
+      //         }
+      //     }
+      // }
+      require(fundsWallet == msg.sender);
+      uint256 amount = this.balance;
+      if (fundsWallet.send(this.balance)) {
+          FundTransfer(fundsWallet, amount, false);
       }
 
-      if (fundingGoalReached && projectWallet == msg.sender) {
-          if (projectWallet.send(this.balance)) {
-              FundTransfer(projectWallet, amountRaised, false);
-          } else {
-              //If we fail to send the funds to projectWallet, unlock funders balance
-              fundingGoalReached = false;
-          }
-      }
   }
 
   /* Set new dates for main-sale (emergency case) */
-  function setMainSaleDates(uint256 _mainSaleStartTime, uint256 _mainSaleEndTime) public onlyOwner returns (bool) {
-    require(!crowdsaleClosed);
-    require(now <= mainSaleEndTime && now >= mainSaleStartTime);
+  function setMainSaleDates(uint _mainSaleStartTime, uint _mainSaleEndTime) public onlyOwner returns (bool) {
+    // require(now < _mainSaleStartTime);
+    require(_mainSaleEndTime > _mainSaleStartTime);
     mainSaleStartTime = _mainSaleStartTime;
     mainSaleEndTime = _mainSaleEndTime;
+    ChangeSaleDates(mainSaleStartTime, mainSaleEndTime);
     return true;
   }
 
-  function burn(uint256 _value) public onlyOwner {
-    token.burn(_value);
+}
+
+contract TimeVault is Ownable {
+  using SafeMath for uint256;
+
+  /** Interface flag to determine if address is for a real contract or not */
+  bool public isTimeVault = true;
+
+  /** Token we are holding */
+  CPGToken public token;
+
+  /** Address that can claim tokens */
+  address public teamMultisig;
+  address public adviserWallet;
+
+  /** UNIX timestamp when tokens ICO running. */
+  uint public startTime;
+
+  uint8 public marketStep = 1;
+
+  uint256 tokenUints;
+
+  event Unlocked(uint256 sentEther);
+  event ChangedStartTime(uint oldTime, uint newTime);
+
+
+  function TimeVault(address _gameTeamMultisig, address _adviserWallet, address _token, uint _startTime) public {
+
+    // Sanity check
+    require(_gameTeamMultisig != 0x0);
+    require(_adviserWallet != 0x0);
+    require(_token != 0x0);
+    require(now < _startTime);
+
+    teamMultisig = _gameTeamMultisig;
+    adviserWallet = _adviserWallet;  
+    token = CPGToken(_token);
+    startTime = _startTime;
+    tokenUints = 10 ** uint256(token.decimals());
+
   }
-  
-  /* Send ether to the fund collection projectWallet*/
-  function forwardFunds() internal {
-    projectWallet.transfer(this.balance);
-  }
 
-  /* Function to calculate bonus tokens based on current time(now) and maximum tokenscap per tier */
-  function applyBonus(uint256 weiAmount) internal returns (uint256 bonusedTokens) {
-    /* Bonus tokens to be added */
-    uint256 tokensToAdd = 0;
 
-    /* Calculting the amont of tokens to be allocated based on rate and the money transferred*/
-    uint256 tokens = weiAmount.mul(rate);
-    uint256 diffInSeconds = now.sub(mainSaleStartTime);
+// lock 494W
+  function unlockAdviser() public {
+    // Wait your turn!
+    require(now > startTime);
+    // if has no tokens, don't run.
+    require(token.balanceOf(address(this)) > 0);
 
-    for (uint i = 0; i < timeBonuses.length; i++) {
-      /* If cap[i] is reached then skip */
-      if (cpgSelled < sellSupply.mul(timeBonuses[i].tokenPercent).div(100)) {
-        for (uint j = i; j < timeBonuses.length; j++) {
-          /* Check which week period time it lies and use that percent */
-          if (diffInSeconds <= timeBonuses[j].bonusPeriodEndTime) {
-            tokensToAdd = tokens.mul(timeBonuses[j].bonusPercent).div(100);
-            setKYCstatus(timeBonuses[j].applyKYC);
-            return tokens.add(tokensToAdd);
-          }
-        }
-      }
-    }
+    // require(msg.sender == adviserWallet);
+    uint difftime = now - startTime;
     
+    // if (difftime > 90 days ) {
+    if (difftime > 15 minutes ) {
+      assert(token.transfer(adviserWallet, 4900000*tokenUints));
+      Unlocked(4900000);
+    }
   }
 
-  /*  
-  * Function to extract funds as required before finalizing
-  */
-  function fetchFunds() onlyOwner public {
-    projectWallet.transfer(this.balance);
+  // 653, 653, 654W
+  function unlockGameTeam() public {
+    // Wait your turn!
+    require(now > startTime);
+    // if has no tokens, don't run.
+    require(token.balanceOf(address(this)) > 0);
+
+    // require(msg.sender == teamMultisig);
+    uint difftime = now - startTime;
+
+    if (difftime > 10 minutes && marketStep == 1) {
+      assert(token.transfer(teamMultisig, 6530000*tokenUints));
+      marketStep += 1;
+      Unlocked(6530000);
+    } else if (difftime > 20 minutes && marketStep == 2) {
+      assert(token.transfer(teamMultisig, 6530000*tokenUints));
+      marketStep += 1;
+      Unlocked(6530000);
+    } else if (difftime > 30 minutes && marketStep == 3) {
+      assert(token.transfer(teamMultisig, 6540000*tokenUints));
+      marketStep += 1;
+      Unlocked(6540000);
+    }
+  }
+
+  // set new startTime.
+  function setStartTime(uint newTimestamp) onlyOwner public {
+    // maybe we need go ahead of time
+    // require(now < newTimestamp);
+    uint oldTime = startTime;
+    startTime = newTimestamp;
+    ChangedStartTime(oldTime, newTimestamp);
+  }
+
+  /**
+   * Don't expect to just send in money and get tokens.
+   */
+  function() payable public {
+    revert();
   }
 
 }

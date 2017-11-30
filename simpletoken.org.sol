@@ -1,32 +1,29 @@
-pragma solidity ^0.4.18;
+pragma solidity ^0.4.15;
 
-/**xxp 校验防止溢出情况
+/**
  * @title SafeMath
  * @dev Math operations with safety checks that throw on error
  */
 library SafeMath {
-  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-    if (a == 0) {
-      return 0;
-    }
+  function mul(uint256 a, uint256 b) internal constant returns (uint256) {
     uint256 c = a * b;
-    assert(c / a == b);
+    assert(a == 0 || c / a == b);
     return c;
   }
 
-  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+  function div(uint256 a, uint256 b) internal constant returns (uint256) {
     // assert(b > 0); // Solidity automatically throws when dividing by 0
     uint256 c = a / b;
     // assert(a == b * c + a % b); // There is no case in which this doesn't hold
     return c;
   }
 
-  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+  function sub(uint256 a, uint256 b) internal constant returns (uint256) {
     assert(b <= a);
     return a - b;
   }
 
-  function add(uint256 a, uint256 b) internal pure returns (uint256) {
+  function add(uint256 a, uint256 b) internal constant returns (uint256) {
     uint256 c = a + b;
     assert(c >= a);
     return c;
@@ -48,6 +45,7 @@ contract ERC20Basic {
   event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
+
 /**
  * @title Ownable
  * @dev The Ownable contract has an owner address, and provides basic authorization control
@@ -62,7 +60,7 @@ contract Ownable {
    * @dev The Ownable constructor sets the original `owner` of the contract to the sender
    * account.
    */
-  function Ownable() public {
+  function Ownable() {
     owner = msg.sender;
   }
 
@@ -98,9 +96,7 @@ contract StandardToken is ERC20Basic {
   using SafeMath for uint256;
 
   mapping (address => mapping (address => uint256)) internal allowed;
-  // store tokens
   mapping(address => uint256) balances;
-  // uint256 public totalSupply;
 
   /**
   * @dev transfer token for a specified address
@@ -171,6 +167,7 @@ contract StandardToken is ERC20Basic {
   function allowance(address _owner, address _spender) public constant returns (uint256 remaining) {
     return allowed[_owner][_spender];
   }
+
 }
 
 /**
@@ -198,6 +195,7 @@ contract BurnableToken is StandardToken {
     }
 }
 
+
 /**
  * @title Mintable token
  * @dev Simple ERC20 Token example, with mintable token creation
@@ -205,7 +203,7 @@ contract BurnableToken is StandardToken {
  * Based on code by TokenMarketNet: https://github.com/TokenMarketNet/ico/blob/master/contracts/MintableToken.sol
  */
 
-contract MintableToken is StandardToken, Ownable {
+contract MintableToken is BurnableToken, Ownable {
   event Mint(address indexed to, uint256 amount);
   event MintFinished();
 
@@ -242,6 +240,7 @@ contract MintableToken is StandardToken, Ownable {
   }
 }
 
+
 /**
  * @title Pausable
  * @dev Base contract which allows children to implement an emergency stop mechanism.
@@ -251,7 +250,6 @@ contract Pausable is Ownable {
   event Unpause();
 
   bool public paused = false;
-
 
   /**
    * @dev Modifier to make a function callable only when the contract is not paused.
@@ -284,13 +282,8 @@ contract Pausable is Ownable {
     paused = false;
     Unpause();
   }
-}
 
-/**
- * @title Pausable token
- *
- * @dev StandardToken modified with pausable transfers.
- **/
+}
 
 contract PausableToken is StandardToken, Pausable {
 
@@ -305,26 +298,200 @@ contract PausableToken is StandardToken, Pausable {
   function approve(address _spender, uint256 _value) public whenNotPaused returns (bool) {
     return super.approve(_spender, _value);
   }
+
 }
 
 /*
- * @title CPGToken
+ * @title GESToken
  */
-contract CPGToken is BurnableToken, MintableToken, PausableToken {
-  // Public variables of the token
-  string public name;
-  string public symbol;
-  // 等同于Wei的概念,  decimals is the strongly suggested default, avoid changing it
-  uint8 public decimals;
+contract GESToken is MintableToken, PausableToken {
+  string public constant name = "Galaxy eSolutions";
+  string public constant symbol = "GES";
+  uint8 public constant decimals = 18;
+}
 
-  // function CPGToken( uint256 _initialSupply, string _tokenName, string _tokenSymbol, uint8 _decimals) public {
-  function CPGToken() public {
-    name = "CPG Game";
-    symbol = "CPG";
-    decimals = 18;
-    totalSupply = 98000000 * 10 ** uint256(decimals);
+/**
+ * @title Crowdsale
+ * @dev Modified contract for managing a token crowdsale.
+ */
 
-    // Allocate initial balance to the owner
-    balances[msg.sender] = totalSupply;
+contract GESTokenCrowdSale is Ownable {
+  using SafeMath for uint256;
+
+  struct TimeBonus {
+    uint256 bonusPeriodEndTime;
+    uint percent;
+    uint256 weiCap;
   }
+
+  /* true for finalised crowdsale */
+  bool public isFinalised;
+
+  /* The token object */
+  MintableToken public token;
+
+  /* Start and end timestamps where investments are allowed (both inclusive) */
+  uint256 public mainSaleStartTime;
+  uint256 public mainSaleEndTime;
+
+  /* Address where funds are transferref after collection */
+  address public wallet;
+
+  /* Address where final 10% of funds will be collected */
+  address public tokenWallet;
+
+  /* How many token units a buyer gets per ether */
+  uint256 public rate = 100;
+
+  /* Amount of raised money in wei */
+  uint256 public weiRaised;
+
+  /* Minimum amount of Wei allowed per transaction = 0.1 Ethers */
+  uint256 public saleMinimumWei = 100000000000000000; 
+
+  TimeBonus[] public timeBonuses;
+
+  /**
+   * event for token purchase logging
+   * event for finalizing the crowdsale
+   */
+  event TokenPurchase(address indexed purchaser, address indexed beneficiary, uint256 value, uint256 amount);
+  event FinalisedCrowdsale(uint256 totalSupply, uint256 minterBenefit);
+
+  function GESTokenCrowdSale(uint256 _mainSaleStartTime, address _wallet, address _tokenWallet) public {
+
+    /* Can't start main sale in the past */
+    require(_mainSaleStartTime >= now);
+
+    /* Confirming wallet addresses as valid */
+    require(_wallet != 0x0);
+    require(_tokenWallet != 0x0);
+
+    /* The Crowdsale bonus pattern
+     * 1 day = 86400 = 60 * 60 * 24 (Seconds * Minutes * Hours)
+     * 1 day * Number of days to close at, Bonus Percentage, Max Wei for which bonus is given  
+     */
+    timeBonuses.push(TimeBonus(86400 *  7,  30,    2000000000000000000000)); // 0 - 7 Days, 30 %, 2000 ETH
+    timeBonuses.push(TimeBonus(86400 *  14, 20,    5000000000000000000000)); // 8 -14 Days, 20 %, 2000ETH + 3000 ETH = 5000 ETH
+    timeBonuses.push(TimeBonus(86400 *  21, 10,   10000000000000000000000)); // 15-21 Days, 10 %, 5000 ETH + 5000 ETH = 10000 ETH
+    timeBonuses.push(TimeBonus(86400 *  60,  0,   25000000000000000000000)); // 22-60 Days, 0  %, 10000 ETH + 15000 ETH = 25000 ETH
+
+    token = createTokenContract();
+    mainSaleStartTime = _mainSaleStartTime;
+    mainSaleEndTime = mainSaleStartTime + 60 days;
+    wallet = _wallet;
+    tokenWallet = _tokenWallet;
+    isFinalised = false;
+  }
+
+  /* Creates the token to be sold */
+  function createTokenContract() internal returns (MintableToken) {
+    return new GESToken();
+  }
+
+  /* Fallback function can be used to buy tokens */
+  function () payable {
+    buyTokens(msg.sender);
+  }
+
+  /* Low level token purchase function */
+  function buyTokens(address beneficiary) public payable {
+    require(!isFinalised);
+    require(beneficiary != 0x0);
+    require(msg.value != 0);
+    require(now <= mainSaleEndTime && now >= mainSaleStartTime);
+    require(msg.value >= saleMinimumWei);
+
+    /* Add bonus to tokens depends on the period */
+    uint256 bonusedTokens = applyBonus(msg.value);
+
+    /* Update state on the blockchain */
+    weiRaised = weiRaised.add(msg.value);
+    token.mint(beneficiary, bonusedTokens);
+    TokenPurchase(msg.sender, beneficiary, msg.value, bonusedTokens);
+
+  }
+
+  /* Finish Crowdsale,
+   * Take totalSupply as 89% and mint 11% more to specified owner's wallet
+   * then stop minting forever.
+   */
+
+  function finaliseCrowdsale() external onlyOwner returns (bool) {
+    require(!isFinalised);
+    uint256 totalSupply = token.totalSupply();
+    uint256 minterBenefit = totalSupply.mul(10).div(89);
+    token.mint(tokenWallet, minterBenefit);
+    token.finishMinting();
+    forwardFunds();
+    FinalisedCrowdsale(totalSupply, minterBenefit);
+    isFinalised = true;
+    return true;
+  }
+
+  /* Set new dates for main-sale (emergency case) */
+  function setMainSaleDates(uint256 _mainSaleStartTime) public onlyOwner returns (bool) {
+    require(!isFinalised);
+    mainSaleStartTime = _mainSaleStartTime;
+    mainSaleEndTime = mainSaleStartTime + 60 days;
+    return true;
+  }
+
+  /* Pause the token contract */
+  function pauseToken() external onlyOwner {
+    require(!isFinalised);
+    GESToken(token).pause();
+  }
+
+  /* Unpause the token contract */
+  function unpauseToken() external onlyOwner {
+    GESToken(token).unpause();
+  }
+
+  /* Transfer token's contract ownership to a new owner */
+  function transferTokenOwnership(address newOwner) external onlyOwner {
+    GESToken(token).transferOwnership(newOwner);
+  }
+
+  /* @return true if main sale event has ended */
+  function mainSaleHasEnded() external constant returns (bool) {
+    return now > mainSaleEndTime;
+  }
+
+  /* Send ether to the fund collection wallet */
+  function forwardFunds() internal {
+    wallet.transfer(this.balance);
+  }
+
+  /* Function to calculate bonus tokens based on current time(now) and maximum cap per tier */
+  function applyBonus(uint256 weiAmount) internal constant returns (uint256 bonusedTokens) {
+    /* Bonus tokens to be added */
+    uint256 tokensToAdd = 0;
+
+    /* Calculting the amont of tokens to be allocated based on rate and the money transferred*/
+    uint256 tokens = weiAmount.mul(rate);
+    uint256 diffInSeconds = now.sub(mainSaleStartTime);
+
+    for (uint i = 0; i < timeBonuses.length; i++) {
+      /* If cap[i] is reached then skip */
+      if(weiRaised.add(weiAmount) <= timeBonuses[i].weiCap){
+        for(uint j = i; j < timeBonuses.length; j++){
+          /* Check which week period time it lies and use that percent */
+          if (diffInSeconds <= timeBonuses[j].bonusPeriodEndTime) {
+            tokensToAdd = tokens.mul(timeBonuses[j].percent).div(100);
+            return tokens.add(tokensToAdd);
+          }
+        }
+      }
+    }
+    
+  }
+
+  /*  
+  * Function to extract funds as required before finalizing
+  */
+  function fetchFunds() onlyOwner public {
+    wallet.transfer(this.balance);
+  }
+
 }
