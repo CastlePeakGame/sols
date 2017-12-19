@@ -359,7 +359,7 @@ contract CPGCrowdSale is Ownable {
   mapping(address => uint256) public investedEtherAmount;
 
   // bool public isDistributed = false;
-  uint ethPrice = 4777;
+  uint ethPrice = 5500;
 
   /**
    * event for token logging
@@ -382,9 +382,9 @@ contract CPGCrowdSale is Ownable {
      * name, 距启动时间差（秒), 已收以太币, 单笔下限(cny, ether), 单笔上限(cny, ether)， 每阶段硬顶
      * privateICO has no time limit， set the max timestamp.
      */
-    mileStones.push(MileStone("private", 3816000 seconds,     0,  3000000,   3000000/ethPrice, 11466000,   11466000/ethPrice,    11466000,   11466000/ethPrice));
-    mileStones.push(MileStone("pre",     3816000 seconds,     0,  500000,    500000/ethPrice,  3000000,    3000000/ethPrice,     40000000,   40000000/ethPrice));
-    mileStones.push(MileStone("public",  3816000 seconds,     0,  ethPrice,  1,                72000000,   72000000/ethPrice,    72000000,   72000000/ethPrice));
+    mileStones.push(MileStone("private", 3753000 seconds,     0,  3000000,   3000000/ethPrice, 11700000,    11700000/ethPrice,    11700000,    11700000/ethPrice));
+    mileStones.push(MileStone("pre",     3753000 seconds,     0,  500000,    500000/ethPrice,  3000000,     3000000/ethPrice,     40000000,   40000000/ethPrice));
+    mileStones.push(MileStone("public",  3753000 seconds,     0,  ethPrice,  1,                72000000,    72000000/ethPrice,    72000000,   72000000/ethPrice));
 
     mainSaleStartTime = _mainSaleStartTime;
     mainSaleEndTime = mainSaleStartTime + mileStones[mileStones.length-1].diffStartTime;
