@@ -319,7 +319,7 @@ contract DininbToken is BurnableToken, MintableToken, PausableToken {
 
   // function DininbToken( uint256 _initialSupply, string _tokenName, string _tokenSymbol, uint8 _decimals) public {
   function DininbToken() public {
-    name = "dininb.com";
+    name = "dininb";
     symbol = "db";
     decimals = 18;
     totalSupply = 1000000000 * 10 ** uint256(decimals);
