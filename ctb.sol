@@ -4,36 +4,31 @@ pragma solidity ^0.4.18;
  * XXP check. Math operations with safety checks
  */
 contract SafeMath {
-  function safeMul(uint256 a, uint256 b) internal returns (uint256) {
+  function safeMul(uint256 a, uint256 b) internal pure returns (uint256) {
     uint256 c = a * b;
     assert(a == 0 || c / a == b);
     return c;
   }
 
-  function safeDiv(uint256 a, uint256 b) internal returns (uint256) {
+  function safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
     assert(b > 0);
     uint256 c = a / b;
     assert(a == b * c + a % b);
     return c;
   }
 
-  function safeSub(uint256 a, uint256 b) internal returns (uint256) {
+  function safeSub(uint256 a, uint256 b) internal pure returns (uint256) {
     assert(b <= a);
     return a - b;
   }
 
-  function safeAdd(uint256 a, uint256 b) internal returns (uint256) {
+  function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
     uint256 c = a + b;
     assert(c>=a && c>=b);
     return c;
   }
-
-  function assert(bool assertion) internal {
-    if (!assertion) {
-      throw;
-    }
-  }
 }
+
 contract CTB is SafeMath {
     string public name;
     string public symbol;
@@ -59,22 +54,17 @@ contract CTB is SafeMath {
     event Unfreeze(address indexed from, uint256 value);
 
     /* Initializes contract with initial supply tokens to the creator of the contract */
-    function BNB(
-        uint256 initialSupply,
-        string tokenName,
-        uint8 decimalUnits,
-        string tokenSymbol
-        ) {
-        balanceOf[msg.sender] = initialSupply;              // Give the creator all initial tokens
-        totalSupply = initialSupply;                        // Update total supply
-        name = tokenName;                                   // Set the name for display purposes
-        symbol = tokenSymbol;                               // Set the symbol for display purposes
-        decimals = decimalUnits;                            // Amount of decimals for display purposes
+    function CTB() public {
+        name = "CoinToBe";                                   // Set the name for display purposes
+        symbol = "CTB";                               // Set the symbol for display purposes
+        decimals = 18;                            // Amount of decimals for display purposes
+        totalSupply = 200000000 * 10 ** uint256(decimals);                        // Update total supply
+        balanceOf[msg.sender] = totalSupply;              // Give the creator all initial tokens
 		owner = msg.sender;
     }
 
     /* Send coins */
-    function transfer(address _to, uint256 _value) {
+    function transfer(address _to, uint256 _value) public {
         require(_to != 0x0);                              // Prevent transfer to 0x0 address. Use burn() instead
         require(_value > 0);
         require(balanceOf[msg.sender] >= _value);           // Check if the sender has enough
@@ -85,7 +75,7 @@ contract CTB is SafeMath {
     }
 
     /* Allow another contract to spend some tokens in your behalf */
-    function approve(address _spender, uint256 _value) returns (bool success) {
+    function approve(address _spender, uint256 _value) public returns (bool success) {
         require(_value > 0); 
         allowance[msg.sender][_spender] = _value;
         return true;
@@ -93,7 +83,7 @@ contract CTB is SafeMath {
        
 
     /* A contract attempts to get the coins */
-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+    function transferFrom(address _from, address _to, uint256 _value) public returns (bool success) {
         require(_to != 0x0);                                // Prevent transfer to 0x0 address. Use burn() instead
         require(_value > 0);
         require(balanceOf[_from] >= _value);                 // Check if the sender has enough
@@ -106,7 +96,7 @@ contract CTB is SafeMath {
         return true;
     }
 
-    function burn(uint256 _value) returns (bool success) {
+    function burn(uint256 _value) public returns (bool success) {
         require(balanceOf[msg.sender] >= _value);            // Check if the sender has enough
         require(_value > 0); 
         balanceOf[msg.sender] = SafeMath.safeSub(balanceOf[msg.sender], _value);                      // Subtract from the sender
@@ -115,7 +105,7 @@ contract CTB is SafeMath {
         return true;
     }
 
-    function freeze(uint256 _value) returns (bool success) {
+    function freeze(uint256 _value) public returns (bool success) {
         require(balanceOf[msg.sender] >= _value);            // Check if the sender has enough
         require(_value > 0); 
         balanceOf[msg.sender] = SafeMath.safeSub(balanceOf[msg.sender], _value);                      // Subtract from the sender
@@ -124,7 +114,7 @@ contract CTB is SafeMath {
         return true;
     }
 
-    function unfreeze(uint256 _value) returns (bool success) {
+    function unfreeze(uint256 _value) public returns (bool success) {
         require(freezeOf[msg.sender] >= _value);            // Check if the sender has enough
         require(_value > 0); 
         freezeOf[msg.sender] = SafeMath.safeSub(freezeOf[msg.sender], _value);                      // Subtract from the sender
@@ -134,12 +124,12 @@ contract CTB is SafeMath {
     }
 
     // transfer balance to owner
-    function withdrawEther(uint256 amount) {
+    function withdrawEther(uint256 amount) public {
         require(msg.sender == owner);
         owner.transfer(amount);
     }
 
     // can accept ether
-    function() payable {
+    function() payable public {
     }
 }

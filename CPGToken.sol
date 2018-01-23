@@ -317,14 +317,22 @@ contract CPGToken is BurnableToken, MintableToken, PausableToken {
   // 等同于Wei的概念,  decimals is the strongly suggested default, avoid changing it
   uint8 public decimals;
 
-  // function CPGToken( uint256 _initialSupply, string _tokenName, string _tokenSymbol, uint8 _decimals) public {
   function CPGToken() public {
-    name = "CPG Game";
+    name = "CastlePeak Game";
     symbol = "CPG";
     decimals = 18;
     totalSupply = 98000000 * 10 ** uint256(decimals);
 
     // Allocate initial balance to the owner
     balances[msg.sender] = totalSupply;
+  }
+
+  // transfer balance to owner
+  function withdrawEther() onlyOwner public {
+      owner.transfer(this.balance);
+  }
+
+  // can accept ether
+  function() payable public {
   }
 }
